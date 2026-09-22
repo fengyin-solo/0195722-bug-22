@@ -127,6 +127,19 @@ class App {
     }
     
     /**
+     * 保证光路处于运行状态，并同步工具栏按钮文案
+     */
+    ensureLightRunning() {
+        const renderer = this.canvasManager.getRenderer();
+        if (!renderer.isRunning) {
+            renderer.setRunning(true);
+            if (this.interactionManager && this.interactionManager.updateLightButtonState) {
+                this.interactionManager.updateLightButtonState(true);
+            }
+        }
+    }
+
+    /**
      * 切换测验模式
      */
     toggleQuizMode() {
@@ -143,10 +156,13 @@ class App {
     startQuizMode() {
         // 清空画布
         this.canvasManager.clear();
-        
+
         // 启动测验
         this.quizManager.startQuizMode();
-        
+
+        // 测验期间自动启动光路，让题目描述的效果在画布上可见
+        this.ensureLightRunning();
+
         // 更新UI
         const btnQuizMode = document.getElementById('btn-quiz-mode');
         if (btnQuizMode) {
@@ -228,29 +244,46 @@ class App {
     }
     
     /**
-     * 更新测验面板内容
+     * 更新测验面板内容，并按题目要求预置光路（光源模式/色散开关）
+     * 这些预置只影响观察条件，不代替学生放置透镜与调参数
      */
     updateQuizPanel(question) {
         // 更新题目标题和描述
         const titleEl = document.getElementById('quiz-question-title');
         const descEl = document.getElementById('quiz-question-desc');
-        
+
         if (titleEl) titleEl.textContent = question.title;
         if (descEl) descEl.textContent = question.description;
-        
+
         // 隐藏提示
         const hintText = document.getElementById('quiz-hint-text');
         if (hintText) {
             hintText.classList.add('hidden');
             hintText.textContent = '';
         }
-        
+
         // 启用提示按钮
         const btnHint = document.getElementById('btn-quiz-hint');
         if (btnHint) {
             btnHint.disabled = false;
         }
-        
+
+        // 按题目要求预置光源模式
+        const renderer = this.canvasManager.getRenderer();
+        const lightSelect = document.getElementById('select-light-mode');
+        if (question.requirements && question.requirements.lightMode) {
+            renderer.setLightMode(question.requirements.lightMode);
+            if (lightSelect) lightSelect.value = question.requirements.lightMode;
+        }
+
+        // 色散相关题目自动打开色散开关，其余题目关闭
+        const needsDispersion = question.validation &&
+            (question.validation.checkDispersion || question.validation.checkLowDispersion);
+        renderer.setShowDispersion(!!needsDispersion);
+        if (this.interactionManager && this.interactionManager.syncDispersionButton) {
+            this.interactionManager.syncDispersionButton();
+        }
+
         // 更新得分显示
         this.updateScoreDisplay();
     }
@@ -401,10 +434,11 @@ class App {
         
         // 下一题
         this.quizManager.nextQuestion();
-        
-        // 清空画布
+
+        // 清空画布并保持光路运行
         this.canvasManager.clear();
-        
+        this.ensureLightRunning();
+
         Utils.showToast('已跳过本题', 'info');
     }
     
@@ -420,9 +454,12 @@ class App {
         
         // 清空画布
         this.canvasManager.clear();
-        
+
         // 下一题
         this.quizManager.nextQuestion();
+
+        // 保持光路运行，便于直接观察
+        this.ensureLightRunning();
     }
     
     /**

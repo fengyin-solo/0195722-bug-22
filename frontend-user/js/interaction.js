@@ -79,16 +79,40 @@ class InteractionManager {
         // 光源模式选择
         document.getElementById('select-light-mode').addEventListener('change', (e) => {
             this.renderer.setLightMode(e.target.value);
-            document.getElementById('data-light-type').textContent = 
-                e.target.value === 'parallel' ? '平行光' : '点光源';
         });
-        
+
+        // 入射角调节（斜入射平面透镜可看到侧移）
+        const angleSlider = document.getElementById('param-angle');
+        angleSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value, 10);
+            document.getElementById('param-angle-value').textContent = `${value}°`;
+            this.renderer.setIncidentAngle(value);
+        });
+
+        // 色散开关
+        const btnDispersion = document.getElementById('btn-toggle-dispersion');
+        btnDispersion.addEventListener('click', () => {
+            const show = !this.renderer.showDispersion;
+            this.renderer.setShowDispersion(show);
+            btnDispersion.classList.toggle('active', show);
+        });
+
         // 切换标注
         const btnToggleLabels = document.getElementById('btn-toggle-labels');
         btnToggleLabels.addEventListener('click', () => {
             const showLabels = this.renderer.toggleLabels();
             btnToggleLabels.classList.toggle('active', showLabels);
         });
+    }
+
+    /**
+     * 同步色散开关显示状态（测验模式可自动开启）
+     */
+    syncDispersionButton() {
+        const btnDispersion = document.getElementById('btn-toggle-dispersion');
+        if (btnDispersion) {
+            btnDispersion.classList.toggle('active', this.renderer.showDispersion);
+        }
     }
     
     /**
@@ -111,45 +135,45 @@ class InteractionManager {
         riSlider.addEventListener('input', (e) => {
             const value = parseFloat(e.target.value);
             document.getElementById('param-ri-value').textContent = value.toFixed(2);
-            
+
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.refractiveIndex = value;
-                this.renderer.render();
+                this.refreshSelectedLens();
             }
         });
-        
+
         const sizeSlider = document.getElementById('param-size');
         sizeSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             document.getElementById('param-size-value').textContent = `${value}%`;
-            
+
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.size = value;
-                this.renderer.render();
+                this.refreshSelectedLens();
             }
         });
-        
+
         const curvatureSlider = document.getElementById('param-curvature');
         curvatureSlider.addEventListener('input', (e) => {
             const value = parseInt(e.target.value);
             document.getElementById('param-curvature-value').textContent = `${value}%`;
-            
+
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.curvature = value;
-                this.renderer.render();
+                this.refreshSelectedLens();
             }
         });
-        
+
         document.getElementById('param-material').addEventListener('change', (e) => {
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.applyMaterial(e.target.value);
                 riSlider.value = this.canvasManager.selectedLens.refractiveIndex;
-                document.getElementById('param-ri-value').textContent = 
+                document.getElementById('param-ri-value').textContent =
                     this.canvasManager.selectedLens.refractiveIndex.toFixed(2);
-                this.renderer.render();
+                this.refreshSelectedLens();
             }
         });
-        
+
         document.getElementById('btn-reset-lens').addEventListener('click', () => {
             if (this.canvasManager.selectedLens) {
                 this.canvasManager.selectedLens.reset();
@@ -222,8 +246,41 @@ class InteractionManager {
         document.getElementById('param-curvature').value = lens.curvature;
         document.getElementById('param-curvature-value').textContent = `${lens.curvature}%`;
         document.getElementById('param-material').value = lens.material;
-        
+
         const curvatureGroup = document.getElementById('param-curvature-group');
         curvatureGroup.style.display = lens.type === CONFIG.LENS_TYPES.PLANO ? 'none' : 'flex';
+
+        this.updateFocalDisplay(lens);
+    }
+
+    /**
+     * 焦距显示：与光轴上的焦点标注、测验弹窗使用同一计算
+     */
+    updateFocalDisplay(lens) {
+        const valueEl = document.getElementById('param-focal-value');
+        const hintEl = document.getElementById('param-focal-hint');
+        if (!valueEl) return;
+
+        const f = lens.getFocalLength();
+        if (lens.type === CONFIG.LENS_TYPES.PLANO) {
+            valueEl.textContent = '无（∞）';
+            hintEl.textContent = '平行平板不改变方向；斜入射时只产生侧移';
+        } else if (f < 0) {
+            valueEl.textContent = `虚焦 ${Math.abs(Math.round(f))}px`;
+            hintEl.textContent = '凹透镜使光线发散，反向延长线交于虚焦点';
+        } else {
+            valueEl.textContent = `${Math.round(f)}px`;
+            hintEl.textContent = '启动光路后，光轴上的焦点位置与此数值一致';
+        }
+    }
+
+    /**
+     * 参数滑块变化后刷新焦距显示与画布
+     */
+    refreshSelectedLens() {
+        this.renderer.render();
+        if (this.canvasManager.selectedLens) {
+            this.updateFocalDisplay(this.canvasManager.selectedLens);
+        }
     }
 }

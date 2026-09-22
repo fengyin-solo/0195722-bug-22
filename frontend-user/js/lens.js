@@ -53,23 +53,24 @@ class Lens {
     }
     
     /**
-     * 获取透镜宽度
+     * 获取透镜宽度（x 方向厚度）
+     * 凸/凹/非球面：随弧度变化的薄透镜厚度
+     * 平面透镜：固定厚度的平行平板（保证斜入射侧移可见）
      */
     getWidth() {
-        const baseWidth = this.type === CONFIG.LENS_TYPES.PLANO ? 8 : 30;
+        if (this.type === CONFIG.LENS_TYPES.PLANO) {
+            return Physics.getPlateThickness(this);
+        }
+        const baseWidth = 30;
         return baseWidth * (this.size / 100) * (this.curvature / 50);
     }
-    
+
     /**
-     * 获取焦距
+     * 获取焦距（近轴）：与 Physics 光线实际交汇使用同一公式
+     * 凸/非球面为正（实焦点），凹透镜为负（虚焦点），平面透镜为无穷大
      */
     getFocalLength() {
-        if (this.type === CONFIG.LENS_TYPES.PLANO) {
-            return Infinity;
-        }
-        
-        const sign = this.type === CONFIG.LENS_TYPES.CONCAVE ? -1 : 1;
-        return sign * Physics.calculateFocalLength(this.refractiveIndex, this.curvature, this.getHeight());
+        return Physics.calculateFocalLength(this);
     }
     
     /**

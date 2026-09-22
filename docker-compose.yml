@@ -1,8 +1,8 @@
 services:
   frontend-user:
     build:
-      context: ./frontend-user
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: frontend-user/Dockerfile
     ports:
       - "8081:80"
     restart: unless-stopped

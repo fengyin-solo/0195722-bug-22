@@ -21,24 +21,25 @@ const CONFIG = {
     },
     
     // 材料类型
+    // dispersion 为柯西模型的色散系数（普通玻璃大、ED玻璃很小）
     MATERIALS: {
         NORMAL: {
             id: 'normal',
             name: '普通玻璃',
             refractiveIndex: 1.5,
-            dispersion: 0.4  // 普通玻璃色散较大
+            dispersion: 0.072  // 普通玻璃色散明显（教学放大，保证三色焦点可见）
         },
         HIGH_INDEX: {
             id: 'highIndex',
             name: '高折射率镜片',
             refractiveIndex: 1.7,
-            dispersion: 0.35  // 高折射率通常色散也较大
+            dispersion: 0.06  // 高折射率通常色散也较大
         },
         LOW_DISPERSION: {
             id: 'lowDispersion',
             name: '低色散镜片',
             refractiveIndex: 1.52,
-            dispersion: 0.08  // ED玻璃，色散很小
+            dispersion: 0.003  // ED玻璃，三色焦点几乎重合
         }
     },
     
@@ -88,16 +89,18 @@ const CONFIG = {
         UPDATE_DELAY: 50
     },
     
-    // 帮助文本
+    // 帮助文本（与 OPTICS_SPEC.RULES 使用同一套说法）
     HELP_TEXTS: {
-        convex: '凸透镜：中间厚、边缘薄，可以让光线汇聚到一点（焦点）。边缘光线会有轻微球差。',
-        concave: '凹透镜：中间薄、边缘厚，可以让光线发散开来',
-        plano: '平面透镜：两面都是平的，光线穿过时方向不变',
-        aspheric: '非球面透镜：表面曲率从中心到边缘逐渐变化，能消除球差，让所有光线精准汇聚到同一焦点',
-        lowDispersion: '低色散镜片（ED玻璃）：阿贝数高，不同颜色的光折射角度几乎相同，成像更清晰无彩边',
-        highIndex: '高折射率镜片：更薄更轻，聚光能力更强，但色散也较明显',
-        refractiveIndex: '折射率：数值越大，光线偏折越明显。不同颜色光的折射率略有不同，这就是色散的原因',
-        curvature: '弧度：调节透镜的弯曲程度，影响焦距和球差'
+        convex: OPTICS_SPEC.RULES.convex,
+        concave: OPTICS_SPEC.RULES.concave,
+        plano: OPTICS_SPEC.RULES.plano,
+        aspheric: OPTICS_SPEC.RULES.aspheric,
+        lowDispersion: OPTICS_SPEC.RULES.lowDispersion,
+        highIndex: OPTICS_SPEC.RULES.highIndex,
+        refractiveIndex: OPTICS_SPEC.RULES.refractiveIndex,
+        curvature: OPTICS_SPEC.RULES.curvature,
+        incidentAngle: OPTICS_SPEC.RULES.incidentAngle,
+        dispersionToggle: OPTICS_SPEC.RULES.dispersionToggle
     },
     
     // 知识点提示
@@ -185,14 +188,14 @@ const CONFIG = {
                 checkNoDeflection: true
             },
             explanation: {
-                correct: '完全正确！平面透镜的两个表面都是平行的，光线垂直入射时方向不变，只会发生微小的侧移。',
+                correct: '完全正确！平面透镜的两个表面互相平行：光线垂直入射时方向不变、也没有侧移；斜入射时会发生侧移，但出射光与入射光方向始终保持平行。',
                 wrongType: '这道题需要使用平面透镜。凸透镜会使光线会聚，凹透镜会使光线发散。',
-                hasDeflection: '光线发生了偏折。请确认你选择的是平面透镜，并且光线是垂直入射的。'
+                hasDeflection: '光线方向发生了改变。请确认你选择的是平面透镜——无论是否斜入射，出射光都应与入射光方向平行。'
             },
             hints: [
-                '平面透镜的两个表面是平行的平面',
-                '光在同一种均匀介质中沿直线传播',
-                '平面透镜常用于保护光学元件'
+                '平面透镜的两个表面是互相平行的平面',
+                '垂直入射时方向不变；斜入射时会发生侧移',
+                '出射光与入射光方向始终平行，只是位置错开'
             ]
         },
         {
@@ -273,7 +276,7 @@ const CONFIG = {
         {
             id: 'dispersion_demo',
             title: '色散现象演示',
-            description: '白光通过透镜时会发生色散，不同颜色的光偏折程度不同。请选择合适的材料和参数，观察明显的色散现象。',
+            description: '白光通过透镜时会发生色散，不同颜色的光偏折程度不同。请选择普通玻璃凸透镜（建议弧度≥60），并打开工具栏的“色散”开关观察三色焦点。',
             requirements: {
                 lensType: 'convex',
                 material: 'normal',
@@ -286,17 +289,17 @@ const CONFIG = {
                 checkDispersion: true
             },
             explanation: {
-                correct: '正确！普通玻璃的色散较大，白光通过时会分解成红、绿、蓝等颜色。蓝光折射率最大，偏折最多；红光折射率最小，偏折最少。',
+                correct: '正确！普通玻璃的色散较大，打开色散开关后可以看到红、绿、蓝三个焦点：蓝光折射率最大、焦点最靠近透镜，红光折射率最小、焦点最远。',
                 wrongType: '请使用凸透镜来观察色散现象，光线需要偏折才能观察到色散。',
                 wrongMaterial: '低色散镜片（ED玻璃）的色散很小，不容易观察到色散现象。请使用普通玻璃材料。',
-                wrongCurvature: '曲率太小，光线偏折不明显，色散现象也不明显。请增大曲率。',
-                noDispersion: '色散现象不明显。请尝试增大入射角，让光线斜着入射，这样色散会更明显。'
+                wrongCurvature: '曲率太小，光线偏折不明显，色散也不明显。请把弧度调到60以上。',
+                noDispersion: '色散现象不明显。请确认已打开工具栏的“色散”开关，并使用普通玻璃、弧度较大的凸透镜。'
             },
             hints: [
                 '白光是由多种颜色的光组成的',
-                '不同颜色的光折射率不同',
-                '蓝光偏折最多，红光偏折最少',
-                '让光线斜入射，色散更明显'
+                '点击工具栏“色散”开关，分色追踪红、绿、蓝光',
+                '蓝光焦点最靠近透镜，红光焦点最远',
+                '斜入射时还能在光线穿过处看到彩色边缘'
             ]
         },
         {
@@ -340,16 +343,16 @@ const CONFIG = {
                 checkSphericalAberration: true
             },
             explanation: {
-                correct: '观察得很仔细！球面透镜的边缘光线比中心光线偏折更多，导致球差。你可以看到边缘光线会聚在更靠近透镜的位置。',
+                correct: '观察得很仔细！球面凸透镜的边缘光线比中心光线偏折更多，它们会聚在更靠近透镜的位置，各条光线的交点沿光轴散开，这就是球差。',
                 wrongType: '请使用凸透镜来观察球差现象。',
                 wrongLightMode: '请切换到平行光模式，这样才能清晰观察到球差。',
-                wrongCurvature: '曲率太小，球差不明显。请增大曲率，球差会更显著。',
-                noAberration: '球差不明显。请尝试增大曲率，或者使用非球面透镜对比观察。'
+                wrongCurvature: '弧度太小，球差不明显。请把弧度调到60以上，边缘与中心光线的焦位差会更显著。',
+                noAberration: '球差不明显。请把弧度调到60以上，或换用更高折射率的材料后再观察边缘光线的焦位。'
             },
             hints: [
                 '球面透镜存在球差',
-                '边缘光线比中心光线偏折更多',
-                '曲率越大，球差越明显',
+                '边缘光线比中心光线偏折更多，焦点更靠近透镜',
+                '弧度越大，球差越明显',
                 '非球面透镜可以消除球差'
             ]
         },
@@ -436,8 +439,8 @@ const CONFIG = {
             ],
             light: {
                 mode: 'parallel',
-                rayCount: 3,
-                angle: 15
+                rayCount: 5,
+                angle: 0
             },
             showDispersion: true
         }

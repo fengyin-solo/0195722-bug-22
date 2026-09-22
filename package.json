@@ -1,0 +1,9 @@
+{
+  "name": "optics-designer",
+  "version": "1.0.0",
+  "description": "中学生交互式光学设计编程项目",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/"
+  }
+}

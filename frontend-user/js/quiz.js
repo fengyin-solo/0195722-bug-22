@@ -185,7 +185,7 @@ class QuizManager {
             const curvCorrect = curvature >= minCurv && curvature <= maxCurv;
             
             results.push({
-                name: '曲率',
+                name: '弧度',
                 expected: `${minCurv}% - ${maxCurv}%`,
                 actual: `${curvature}%`,
                 correct: curvCorrect
@@ -231,7 +231,7 @@ class QuizManager {
             const noDeflectionResult = this.checkNoDeflection(lens);
             results.push({
                 name: '光线偏折',
-                expected: '光线方向不变',
+                expected: '出射与入射方向平行',
                 actual: noDeflectionResult.message,
                 correct: noDeflectionResult.noDeflection
             });
@@ -332,32 +332,50 @@ class QuizManager {
     }
     
     /**
+     * 对画布上当前透镜做统一光路分析
+     * 渲染器、参数面板、结果弹窗与自动测试共用同一计算（Physics + SPEC 阈值）
+     */
+    analyzeCanvas(lens) {
+        return Physics.analyzeParallelBeam(lens, {
+            angle: this.renderer.incidentAngle,
+            rayCount: 9,
+            startX: 0
+        });
+    }
+
+    /**
      * 检查光线会聚情况
      */
     checkConvergence(lens) {
-        if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
+        if (lens.type !== CONFIG.LENS_TYPES.CONVEX &&
+            lens.type !== CONFIG.LENS_TYPES.ASPHERIC) {
             return { converging: false, message: '需要使用凸透镜' };
         }
-        
-        const focalLength = lens.getFocalLength();
+
+        const analysis = this.analyzeCanvas(lens);
+        if (!analysis.converging) {
+            return { converging: false, message: '光线没有会聚，请增大折射率或弧度' };
+        }
+
         const minFocal = this.currentQuestion.requirements.minFocalLength || 50;
         const maxFocal = this.currentQuestion.requirements.maxFocalLength || 500;
-        
-        if (focalLength < minFocal || focalLength > maxFocal) {
-            return { 
-                converging: false, 
-                message: `焦距 ${Math.round(focalLength)}px 不在合适范围内 (${minFocal}-${maxFocal}px)` 
+        if (analysis.focalLength < minFocal || analysis.focalLength > maxFocal) {
+            return {
+                converging: false,
+                message: `焦距 ${Math.round(analysis.focalLength)}px 不在合适范围（${minFocal}-${maxFocal}px）`
             };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.15) {
-            return { converging: false, message: '会聚能力太弱，请增大折射率或曲率' };
+
+        if (analysis.spreadRatio > OPTICS_SPEC.TOLERANCES.CONVERGE_MAX_RATIO) {
+            return {
+                converging: false,
+                message: `边缘与中心焦点相差 ${Math.round(analysis.focusSpread)}px（球差），会聚不够集中`
+            };
         }
-        
-        return { converging: true, message: `光线会聚良好，焦距约 ${Math.round(focalLength)}px` };
+
+        return { converging: true, message: `光线会聚良好，焦距约 ${Math.round(analysis.focalLength)}px` };
     }
-    
+
     /**
      * 检查光线发散情况
      */
@@ -365,85 +383,129 @@ class QuizManager {
         if (lens.type !== CONFIG.LENS_TYPES.CONCAVE) {
             return { diverging: false, message: '需要使用凹透镜' };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.1) {
-            return { diverging: false, message: '发散能力太弱，请增大折射率或曲率' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (!analysis.diverging) {
+            return { diverging: false, message: '光线没有明显发散，请增大折射率或弧度' };
         }
-        
-        return { diverging: true, message: '光线发散效果明显' };
+
+        return {
+            diverging: true,
+            message: `光线向外发散，虚焦距约 ${Math.abs(Math.round(analysis.focalLength))}px`
+        };
     }
-    
+
     /**
-     * 检查光线是否无偏折
+     * 检查平面透镜：出射方向与入射方向平行（允许可见侧移）
      */
     checkNoDeflection(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.PLANO) {
             return { noDeflection: false, message: '需要使用平面透镜' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) > 5) {
-            return { noDeflection: false, message: '请让光线垂直入射（入射角为0）' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (!analysis.sameDirection) {
+            return {
+                noDeflection: false,
+                message: `出射方向改变了 ${Utils.radToDeg(analysis.directionDelta).toFixed(1)}°，平行平板不应改变方向`
+            };
         }
-        
-        return { noDeflection: true, message: '光线沿直线传播，方向不变' };
+
+        if (analysis.sideShift > 0.5) {
+            return {
+                noDeflection: true,
+                message: `方向不变（与入射平行），斜入射产生侧移约 ${analysis.sideShift.toFixed(1)}px`
+            };
+        }
+        return { noDeflection: true, message: '光线方向不变，垂直入射时无侧移' };
     }
-    
+
     /**
-     * 检查色散效果
+     * 检查色散效果：红、蓝焦点沿光轴明显分离
      */
     checkDispersion(lens) {
-        if (lens.dispersion < 0.2) {
+        if ((lens.dispersion || 0) < 0.01) {
             return { hasDispersion: false, message: '材料色散太小，请使用普通玻璃' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) < 5) {
-            return { hasDispersion: false, message: '请增大入射角，让光线斜入射' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (analysis.colorFocusDelta < OPTICS_SPEC.TOLERANCES.DISPERSION_FOCUS_DELTA) {
+            return {
+                hasDispersion: false,
+                message: `红/蓝焦点仅相差 ${analysis.colorFocusDelta.toFixed(1)}px，请增大弧度或折射率，并打开“色散”开关`
+            };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.2) {
-            return { hasDispersion: false, message: '偏折太弱，色散不明显' };
-        }
-        
-        return { hasDispersion: true, message: '色散现象明显，不同颜色光分离' };
+
+        return {
+            hasDispersion: true,
+            message: `红、蓝焦点相差约 ${Math.round(analysis.colorFocusDelta)}px，色散明显`
+        };
     }
-    
+
     /**
-     * 检查低色散效果
+     * 检查低色散效果：红、蓝焦点几乎重合
      */
     checkLowDispersion(lens) {
-        if (lens.dispersion > 0.15) {
+        if ((lens.dispersion || 0) > 0.01) {
             return { lowDispersion: false, message: '材料色散较大，请使用低色散镜片' };
         }
-        
-        return { lowDispersion: true, message: '色散很小，不同颜色光几乎重合' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (analysis.colorFocusDelta >= OPTICS_SPEC.TOLERANCES.LOW_DISPERSION_FOCUS_DELTA) {
+            return {
+                lowDispersion: false,
+                message: `红、蓝焦点仍相差 ${analysis.colorFocusDelta.toFixed(1)}px`
+            };
+        }
+
+        return {
+            lowDispersion: true,
+            message: `红、蓝焦点仅相差 ${analysis.colorFocusDelta.toFixed(1)}px，几乎重合`
+        };
     }
-    
+
     /**
-     * 检查球差现象
+     * 检查球差现象：边缘与中心光线焦位明显散开
      */
     checkSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
             return { hasAberration: false, message: '需要使用球面凸透镜' };
         }
-        
-        if (lens.curvature < 50) {
-            return { hasAberration: false, message: '曲率太小，球差不明显' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (analysis.spreadRatio < OPTICS_SPEC.TOLERANCES.SPHERICAL_ABERRATION_RATIO) {
+            return {
+                hasAberration: false,
+                message: `边缘/中心焦位差仅占焦距 ${(analysis.spreadRatio * 100).toFixed(0)}%，请把弧度调到60以上`
+            };
         }
-        
-        return { hasAberration: true, message: '球差明显，边缘光线会聚点与中心不同' };
+
+        return {
+            hasAberration: true,
+            message: `球差明显：边缘焦点比中心近 ${Math.round(analysis.focusSpread)}px（${(analysis.spreadRatio * 100).toFixed(0)}%焦距）`
+        };
     }
-    
+
     /**
-     * 检查无球差效果
+     * 检查非球面消球差：所有光线焦位集中
      */
     checkNoSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.ASPHERIC) {
             return { noAberration: false, message: '需要使用非球面透镜' };
         }
-        
-        return { noAberration: true, message: '球差被消除，所有光线会聚到同一点' };
+
+        const analysis = this.analyzeCanvas(lens);
+        if (analysis.spreadRatio > OPTICS_SPEC.TOLERANCES.FOCUS_SPREAD_RATIO) {
+            return {
+                noAberration: false,
+                message: `焦位仍相差 ${Math.round(analysis.focusSpread)}px`
+            };
+        }
+
+        return {
+            noAberration: true,
+            message: `所有光线汇聚到同一焦点（焦位差占焦距 ${(analysis.spreadRatio * 100).toFixed(1)}%）`
+        };
     }
     
     /**

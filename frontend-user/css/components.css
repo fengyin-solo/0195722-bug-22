@@ -344,6 +344,32 @@
     border-color: var(--color-primary);
 }
 
+/* 入射角控件 */
+.angle-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.angle-label {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.angle-slider {
+    width: 90px;
+}
+
+#btn-toggle-dispersion.active {
+    background-color: rgba(74, 144, 226, 0.15);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
 /* 模态框 */
 .modal-overlay {
     position: fixed;

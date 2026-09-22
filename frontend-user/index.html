@@ -258,6 +258,23 @@
                             <option value="parallel">平行光</option>
                             <option value="point">点光源</option>
                         </select>
+                        <label class="angle-control" for="param-angle">
+                            <span class="angle-label">
+                                入射角
+                                <button class="btn-help-small" data-help="incidentAngle">?</button>
+                            </span>
+                            <input type="range" class="param-slider angle-slider" id="param-angle"
+                                   min="-45" max="45" step="1" value="0">
+                            <span class="param-value" id="param-angle-value">0°</span>
+                        </label>
+                        <button class="btn btn-tool" id="btn-toggle-dispersion" title="切换红/绿/蓝三色光追踪">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="9"/>
+                                <path d="M12 3a9 9 0 0 0 0 18"/>
+                                <path d="M3 12h18"/>
+                            </svg>
+                            <span>色散</span>
+                        </button>
                     </div>
                     <div class="toolbar-right">
                         <button class="btn btn-tool" id="btn-toggle-labels" title="显示/隐藏标注">
@@ -294,6 +311,13 @@
                                 透镜类型
                                 <span class="param-value" id="param-type-value">凸透镜</span>
                             </label>
+                        </div>
+                        <div class="param-group">
+                            <label class="param-label">
+                                焦距（与画布焦点一致）
+                                <span class="param-value" id="param-focal-value">—</span>
+                            </label>
+                            <div class="param-hint" id="param-focal-hint">启动光路后，光轴上的焦点位置与此数值一致</div>
                         </div>
                         <div class="param-group">
                             <label class="param-label">
@@ -354,6 +378,7 @@
     <!-- Toast提示 -->
     <div class="toast-container" id="toast-container"></div>
 
+    <script src="js/spec.js"></script>
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
     <script src="js/storage.js"></script>

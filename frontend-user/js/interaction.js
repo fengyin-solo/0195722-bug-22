@@ -79,16 +79,63 @@ class InteractionManager {
         // 光源模式选择
         document.getElementById('select-light-mode').addEventListener('change', (e) => {
             this.renderer.setLightMode(e.target.value);
-            document.getElementById('data-light-type').textContent = 
-                e.target.value === 'parallel' ? '平行光' : '点光源';
+            document.getElementById('data-light-type') &&
+                (document.getElementById('data-light-type').textContent =
+                    e.target.value === 'parallel' ? '平行光' : '点光源');
+            this.updateAngleControlState();
         });
-        
+
+        // 平行光入射角（点光源模式下禁用）
+        const angleSlider = document.getElementById('param-light-angle');
+        angleSlider.addEventListener('input', (e) => {
+            const value = parseInt(e.target.value, 10);
+            document.getElementById('param-light-angle-value').textContent = `${value}°`;
+            this.renderer.setIncidentAngle(value);
+        });
+        this.updateAngleControlState();
+
+        // 色散开关（红/绿/蓝三色光）
+        const btnDispersion = document.getElementById('btn-toggle-dispersion');
+        btnDispersion.addEventListener('click', () => {
+            const show = !this.renderer.showDispersion;
+            this.renderer.setShowDispersion(show);
+            btnDispersion.classList.toggle('active', show);
+        });
+
+        // 加载标准示例（画布、题目、帮助共用同一份数据）
+        document.getElementById('select-example').addEventListener('change', (e) => {
+            const id = e.target.value;
+            if (!id) return;
+            if (ExampleData.loadScenario(id, this.canvasManager, this.renderer)) {
+                angleSlider.value = this.renderer.incidentAngle;
+                document.getElementById('param-light-angle-value').textContent =
+                    `${this.renderer.incidentAngle}°`;
+                btnDispersion.classList.toggle('active', this.renderer.showDispersion);
+                document.getElementById('select-light-mode').value = this.renderer.lightMode;
+                this.updateAngleControlState();
+                this.updateLightButtonState(true);
+                Utils.showToast(`已加载示例：${ExampleData.get(id).name}`, 'success');
+            }
+            e.target.value = '';
+        });
+
         // 切换标注
         const btnToggleLabels = document.getElementById('btn-toggle-labels');
         btnToggleLabels.addEventListener('click', () => {
             const showLabels = this.renderer.toggleLabels();
             btnToggleLabels.classList.toggle('active', showLabels);
         });
+    }
+
+    /**
+     * 入射角控件仅平行光模式可用
+     */
+    updateAngleControlState() {
+        const control = document.getElementById('light-angle-control');
+        if (!control) return;
+        const isParallel = this.renderer.lightMode === CONFIG.LIGHT_MODES.PARALLEL;
+        control.classList.toggle('control-disabled', !isParallel);
+        document.getElementById('param-light-angle').disabled = !isParallel;
     }
     
     /**
@@ -142,9 +189,10 @@ class InteractionManager {
         
         document.getElementById('param-material').addEventListener('change', (e) => {
             if (this.canvasManager.selectedLens) {
-                this.canvasManager.selectedLens.applyMaterial(e.target.value);
+                // 切换材料时把折射率恢复为该材料的默认值
+                this.canvasManager.selectedLens.applyMaterial(e.target.value, true);
                 riSlider.value = this.canvasManager.selectedLens.refractiveIndex;
-                document.getElementById('param-ri-value').textContent = 
+                document.getElementById('param-ri-value').textContent =
                     this.canvasManager.selectedLens.refractiveIndex.toFixed(2);
                 this.renderer.render();
             }

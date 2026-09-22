@@ -1,0 +1,9 @@
+{
+  "name": "optics-designer-frontend",
+  "version": "1.0.0",
+  "description": "中学生交互式光学设计实验室（纯前端）",
+  "private": true,
+  "scripts": {
+    "test": "node tests/consistency-check.js && node tests/quiz-solvable-check.js && node tests/smoke-check.js"
+  }
+}

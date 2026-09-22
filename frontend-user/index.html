@@ -258,6 +258,25 @@
                             <option value="parallel">平行光</option>
                             <option value="point">点光源</option>
                         </select>
+                        <label class="light-angle-control" id="light-angle-control">
+                            <span class="light-angle-label">入射角</span>
+                            <input type="range" class="param-slider light-angle-slider" id="param-light-angle"
+                                   min="-45" max="45" step="5" value="0">
+                            <span class="light-angle-value" id="param-light-angle-value">0°</span>
+                        </label>
+                        <button class="btn btn-tool" id="btn-toggle-dispersion" title="用红、绿、蓝三色光显示色散">
+                            <span>🌈 色散</span>
+                        </button>
+                        <select class="select-light-mode" id="select-example" title="加载标准示例">
+                            <option value="">标准示例…</option>
+                            <option value="convex_focus">凸透镜聚焦</option>
+                            <option value="aspheric_focus">非球面共焦</option>
+                            <option value="concave_diverge">凹透镜发散</option>
+                            <option value="plano_normal">平面垂直入射</option>
+                            <option value="plano_tilted">平面斜入射侧移</option>
+                            <option value="dispersion_normal">普通玻璃色散</option>
+                            <option value="dispersion_low">低色散对比</option>
+                        </select>
                     </div>
                     <div class="toolbar-right">
                         <button class="btn btn-tool" id="btn-toggle-labels" title="显示/隐藏标注">
@@ -356,6 +375,7 @@
 
     <script src="js/config.js"></script>
     <script src="js/utils.js"></script>
+    <script src="js/examples.js"></script>
     <script src="js/storage.js"></script>
     <script src="js/physics.js"></script>
     <script src="js/lens.js"></script>

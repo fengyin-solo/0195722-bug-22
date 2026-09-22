@@ -14,11 +14,17 @@ flowchart TD
     
     subgraph 核心引擎层
         G[Canvas渲染引擎] --> H[光路计算模块]
-        H --> I[折射计算]
-        H --> J[色散计算]
-        H --> K[非球面修正]
+        H --> I[薄透镜偏折]
+        H --> J[平行平板双折射]
+        H --> K[色散/非球面共焦]
     end
-    
+
+    subgraph 一致性层
+        H --> N[Physics 单一事实来源]
+        N --> O[examples.js 标准示例]
+        N --> P[tests/ 一致性清单]
+    end
+
     subgraph 数据层
         L[localStorage] --> M[引导状态存储]
     end
@@ -78,10 +84,10 @@ erDiagram
 
 | 类型 | 说明 | 光路规律 |
 |------|------|----------|
-| convex | 凸透镜 | 光线向光轴会聚 |
-| concave | 凹透镜 | 光线向外发散 |
-| plano | 平面透镜 | 不偏折 |
-| aspheric | 非球面透镜 | 精准会聚，消除球差 |
+| convex | 凸透镜（球面） | 光线向光轴会聚；边缘光线偏折过度，各条光线焦点错开（球差） |
+| concave | 凹透镜 | 光线向外发散，反向延长线交于入射侧虚焦点（f 为负） |
+| plano | 平面透镜（平行平板） | 出射方向与入射方向一致；垂直入射无侧移，斜入射有微小侧移 |
+| aspheric | 非球面透镜 | 所有平行光线严格会聚到同一焦点（消除球差） |
 
 ### 3.2 材料类型
 
@@ -147,14 +153,20 @@ frontend-user/
 │   └── responsive.css  # 响应式样式
 └── js/
     ├── app.js          # 应用入口
-    ├── config.js       # 配置常量
+    ├── config.js       # 配置常量（题目、帮助文案）
+    ├── examples.js     # 标准示例数据（共用唯一清单）
     ├── storage.js      # 本地存储
     ├── guide.js        # 引导系统
     ├── canvas.js       # 画布管理
-    ├── renderer.js     # 光路渲染
-    ├── physics.js      # 物理计算
+    ├── renderer.js     # 光路渲染（只调用 Physics）
+    ├── physics.js      # 物理计算（唯一事实来源）
     ├── interaction.js  # 交互处理
     └── utils.js        # 工具函数
+tests/
+    ├── consistency-check.js  # 文案/物理/示例一致性清单
+    ├── quiz-solvable-check.js# 每道题标准解可通过
+    └── smoke-check.js        # 模拟 DOM 接线冒烟
+package.json          # npm test 与 Docker 构建共用
 ```
 
 ## 七、核心交互流程
@@ -174,39 +186,44 @@ flowchart LR
 
 ## 八、光路计算原理
 
-### 8.1 核心规律
+渲染器（renderer.js）、题目校验（quiz.js）、焦距标注与测试脚本都只调用
+`Physics` 这一套 API，不允许各自实现规则。
 
-- 凸透镜：光线向中间会聚（向光轴偏折）
-- 凹透镜：光线向外发散（远离光轴）
-- 平面透镜：不偏折
-- 非球面：消除球差，边缘光线修正
+### 8.1 薄透镜（凸/凹/非球面）
 
-### 8.2 偏折角度计算
+光线在主平面发生一次偏折（h 为入射点相对光轴距离）：
 
-```javascript
-// 基础偏折强度
-baseStrength = (refractiveIndex - 1) * curvature * 0.8
-
-// 凸透镜：向光轴偏折
-deflection = -relativePos * baseStrength
-
-// 凹透镜：远离光轴
-deflection = +relativePos * baseStrength
-
-// 非球面：应用修正系数减少边缘球差
-deflection = -relativePos * baseStrength * asphericCorrection
+```
+tan θ' = tan θ − h / f(h)
+f0 = FOCAL_CONSTANT / ((n − 1) × 曲率/100)
 ```
 
-### 8.3 非球面修正
+- 凸透镜（球面）：f(h) = f0 / (1 + S·(h/a)⁴)，S 随曲率增大，
+  边缘有效焦距更短 → 边缘光线过度偏折 → 球差可见；
+- 非球面透镜：f(h) = f0，所有平行光线严格交于同一焦点；
+- 凹透镜：f = −f0，交点在入射侧，为虚焦点。
 
-非球面透镜通过改变表面曲率补偿球差：
-- 边缘曲率更平缓
-- 减少边缘光线过度偏折
-- 所有光线汇聚到同一焦点
+### 8.2 平面透镜（有厚度的平行平板）
 
-### 8.4 色散模型
+按两个表面各折射一次追踪：
 
-不同波长光的折射率不同（柯西公式简化）：
-- 蓝光折射率最大，偏折最多
-- 红光折射率最小，偏折最少
-- 低色散镜片：三色光几乎重合
+```
+sin r = sin i / n
+侧移 = 板厚 × (tan i − tan r)
+```
+
+垂直入射 i=0 时侧移为 0；斜入射时出射方向恢复为入射方向，仅平移一段。
+
+### 8.3 色散（柯西公式教学版，λ 以 μm 计）
+
+```
+n(λ) = n_d + K·dispersion·(1/λ² − 1/λ_d²)
+```
+
+蓝光折射率最大、焦距最短（焦点最靠近透镜），红光反之；
+低色散镜片 dispersion 很小，三色焦点几乎重合。
+
+### 8.4 一致性自检
+
+`js/examples.js` 是题目、帮助、画布与测试共用的唯一示例清单，
+`tests/` 下三份脚本在 `npm test` 与 Docker 构建阶段都会运行。

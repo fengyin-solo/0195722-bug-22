@@ -20,7 +20,7 @@ class Lens {
     /**
      * 应用材料预设
      */
-    applyMaterial(materialId) {
+    applyMaterial(materialId, forceIndex = false) {
         const materials = CONFIG.MATERIALS;
         let material;
         
@@ -38,38 +38,51 @@ class Lens {
         this.material = materialId;
         this.dispersion = material.dispersion;
         
-        // 只在初始化时设置折射率
-        if (!this._initialized) {
+        // 只在初始化（或显式强制）时设置折射率，避免改材料时冲掉用户滑块值
+        if (forceIndex || !this._initialized) {
             this.refractiveIndex = material.refractiveIndex;
             this._initialized = true;
         }
     }
     
     /**
-     * 获取透镜高度
+     * 获取透镜高度（口径）
      */
     getHeight() {
         return 80 * (this.size / 100);
     }
-    
+
     /**
-     * 获取透镜宽度
+     * 获取透镜宽度（绘制用）
      */
     getWidth() {
         const baseWidth = this.type === CONFIG.LENS_TYPES.PLANO ? 8 : 30;
         return baseWidth * (this.size / 100) * (this.curvature / 50);
     }
-    
+
     /**
-     * 获取焦距
+     * 获取平面透镜（平行平板）的厚度
+     * 厚度随尺寸变化，斜入射的侧移量与厚度成正比
      */
-    getFocalLength() {
+    getThickness() {
+        return 14 * (this.size / 100);
+    }
+
+    /**
+     * 获取近轴焦距（与 Physics 统一口径）
+     * @param {'red'|'green'|'blue'|null} [color] 光色
+     * @returns {number} px，凹透镜为负，平面透镜为 Infinity
+     */
+    getFocalLength(color = null) {
         if (this.type === CONFIG.LENS_TYPES.PLANO) {
             return Infinity;
         }
-        
-        const sign = this.type === CONFIG.LENS_TYPES.CONCAVE ? -1 : 1;
-        return sign * Physics.calculateFocalLength(this.refractiveIndex, this.curvature, this.getHeight());
+        const n = color
+            ? Physics.calculateDispersionIndex(this.refractiveIndex, this.dispersion, color)
+            : this.refractiveIndex;
+        const magnitude = Physics.calculateFocalLength(n, this.curvature);
+        // 凹透镜为虚焦点，焦距为负
+        return this.type === CONFIG.LENS_TYPES.CONCAVE ? -magnitude : magnitude;
     }
     
     /**
@@ -117,8 +130,8 @@ class Lens {
         this.refractiveIndex = CONFIG.LENS_DEFAULTS.refractiveIndex;
         this.size = CONFIG.LENS_DEFAULTS.size;
         this.curvature = CONFIG.LENS_DEFAULTS.curvature;
-        this.material = CONFIG.LENS_DEFAULTS.material;
-        this.dispersion = CONFIG.MATERIALS.NORMAL.dispersion;
+        // 保持当前材料，只把折射率等参数恢复到该材料的默认值
+        this.applyMaterial(this.material, true);
     }
     
     /**
@@ -143,4 +156,12 @@ class Lens {
     static fromJSON(json) {
         return new Lens(json);
     }
+}
+
+// Node 测试环境导出（浏览器中 globalThis 即 window，无副作用）
+if (typeof globalThis !== 'undefined') {
+    globalThis.Lens = Lens;
+}
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { Lens };
 }

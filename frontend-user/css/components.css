@@ -328,6 +328,39 @@
     border-top: 1px solid var(--color-border-light);
 }
 
+/* 入射角控件与色散开关 */
+.light-angle-control {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xs);
+    font-size: var(--font-size-xs);
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+}
+
+.light-angle-slider {
+    width: 80px;
+    height: 4px;
+}
+
+.light-angle-value {
+    min-width: 28px;
+    font-family: "Courier New", monospace;
+    color: var(--color-primary);
+    font-weight: var(--font-weight-bold);
+}
+
+.light-angle-control.control-disabled {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+#btn-toggle-dispersion.active {
+    background-color: var(--color-primary);
+    color: var(--color-text-inverse);
+    border-color: var(--color-primary);
+}
+
 /* 下拉选择 */
 .select-light-mode {
     padding: var(--spacing-xs) var(--spacing-sm);

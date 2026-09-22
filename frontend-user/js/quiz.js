@@ -332,83 +332,99 @@ class QuizManager {
     }
     
     /**
-     * 检查光线会聚情况
+     * 检查光线会聚情况（基于 Physics.analyzeLens 实测，与画布同一规则）
      */
     checkConvergence(lens) {
-        if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
-            return { converging: false, message: '需要使用凸透镜' };
+        const analysis = Physics.analyzeLens(lens);
+
+        if (!analysis.converging) {
+            return { converging: false, message: '该透镜不会使平行光会聚，请换成凸透镜' };
         }
-        
-        const focalLength = lens.getFocalLength();
+
         const minFocal = this.currentQuestion.requirements.minFocalLength || 50;
         const maxFocal = this.currentQuestion.requirements.maxFocalLength || 500;
-        
-        if (focalLength < minFocal || focalLength > maxFocal) {
-            return { 
-                converging: false, 
-                message: `焦距 ${Math.round(focalLength)}px 不在合适范围内 (${minFocal}-${maxFocal}px)` 
+        const f = analysis.fParaxial;
+
+        if (f < minFocal || f > maxFocal) {
+            return {
+                converging: false,
+                message: `近轴焦距 ${Math.round(f)}px 不在要求范围 (${minFocal}-${maxFocal}px)`
             };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.15) {
-            return { converging: false, message: '会聚能力太弱，请增大折射率或曲率' };
-        }
-        
-        return { converging: true, message: `光线会聚良好，焦距约 ${Math.round(focalLength)}px` };
+
+        return {
+            converging: true,
+            message: `光线会聚良好，近轴焦距约 ${Math.round(f)}px`
+        };
     }
-    
+
     /**
      * 检查光线发散情况
      */
     checkDivergence(lens) {
-        if (lens.type !== CONFIG.LENS_TYPES.CONCAVE) {
-            return { diverging: false, message: '需要使用凹透镜' };
+        const analysis = Physics.analyzeLens(lens);
+
+        if (!analysis.diverging) {
+            return { diverging: false, message: '该透镜不会使平行光发散，请换成凹透镜' };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.1) {
-            return { diverging: false, message: '发散能力太弱，请增大折射率或曲率' };
-        }
-        
-        return { diverging: true, message: '光线发散效果明显' };
+
+        return {
+            diverging: true,
+            message: `光线向外发散，虚焦点距透镜约 ${Math.round(Math.abs(analysis.fParaxial))}px`
+        };
     }
-    
+
     /**
-     * 检查光线是否无偏折
+     * 检查平面透镜是否不改变方向（平行平板任意入射角出射方向都不变）
      */
     checkNoDeflection(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.PLANO) {
             return { noDeflection: false, message: '需要使用平面透镜' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) > 5) {
-            return { noDeflection: false, message: '请让光线垂直入射（入射角为0）' };
+
+        const angle = this.renderer.lightMode === CONFIG.LIGHT_MODES.PARALLEL
+            ? this.renderer.incidentAngle
+            : 0;
+        const analysis = Physics.analyzeLens(lens, { angleDeg: angle });
+
+        if (Math.abs(angle) < 1) {
+            return { noDeflection: true, message: '垂直入射：光线直线穿过，方向不变、无侧移' };
         }
-        
-        return { noDeflection: true, message: '光线沿直线传播，方向不变' };
+        return {
+            noDeflection: true,
+            message: `斜入射 ${Math.round(angle)}°：方向不变，出射光侧移约 ${analysis.lateralShift.toFixed(1)}px`
+        };
     }
-    
+
     /**
-     * 检查色散效果
+     * 检查色散是否明显（红光与蓝光焦距差）
      */
     checkDispersion(lens) {
         if (lens.dispersion < 0.2) {
             return { hasDispersion: false, message: '材料色散太小，请使用普通玻璃' };
         }
-        
-        if (Math.abs(this.renderer.incidentAngle) < 5) {
-            return { hasDispersion: false, message: '请增大入射角，让光线斜入射' };
+
+        const red = Physics.analyzeLens(lens, { color: 'red' });
+        const blue = Physics.analyzeLens(lens, { color: 'blue' });
+        const sep = Math.abs(red.fParaxial - blue.fParaxial);
+
+        if (sep < 8) {
+            return { hasDispersion: false, message: '红蓝焦点分离太小，请增大弧度或折射率' };
         }
-        
-        const strength = (lens.refractiveIndex - 1) * (lens.curvature / 100);
-        if (strength < 0.2) {
-            return { hasDispersion: false, message: '偏折太弱，色散不明显' };
+
+        if (!this.renderer.showDispersion) {
+            return {
+                hasDispersion: false,
+                message: `物理上存在色散（红蓝焦点相差 ${Math.round(sep)}px），请打开工具栏“色散”开关`
+            };
         }
-        
-        return { hasDispersion: true, message: '色散现象明显，不同颜色光分离' };
+
+        return {
+            hasDispersion: true,
+            message: `红、蓝焦点分离约 ${Math.round(sep)}px，色散明显`
+        };
     }
-    
+
     /**
      * 检查低色散效果
      */
@@ -416,36 +432,57 @@ class QuizManager {
         if (lens.dispersion > 0.15) {
             return { lowDispersion: false, message: '材料色散较大，请使用低色散镜片' };
         }
-        
-        return { lowDispersion: true, message: '色散很小，不同颜色光几乎重合' };
+
+        const red = Physics.analyzeLens(lens, { color: 'red' });
+        const blue = Physics.analyzeLens(lens, { color: 'blue' });
+        const sep = Math.abs(red.fParaxial - blue.fParaxial);
+
+        return {
+            lowDispersion: true,
+            message: `红、蓝焦点仅相差约 ${sep.toFixed(1)}px，三色焦点几乎重合`
+        };
     }
-    
+
     /**
-     * 检查球差现象
+     * 检查球面凸透镜的球差（边缘与中心光线焦点错开）
      */
     checkSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.CONVEX) {
             return { hasAberration: false, message: '需要使用球面凸透镜' };
         }
-        
-        if (lens.curvature < 50) {
-            return { hasAberration: false, message: '曲率太小，球差不明显' };
+
+        const analysis = Physics.analyzeLens(lens);
+
+        if (analysis.focalSpread < 8) {
+            return { hasAberration: false, message: '球差不明显，请增大弧度' };
         }
-        
-        return { hasAberration: true, message: '球差明显，边缘光线会聚点与中心不同' };
+
+        return {
+            hasAberration: true,
+            message: `边缘与中心光线焦点错开约 ${Math.round(analysis.focalSpread)}px，球差明显`
+        };
     }
-    
+
     /**
-     * 检查无球差效果
+     * 检查非球面透镜是否消除球差（所有平行光线焦点重合）
      */
     checkNoSphericalAberration(lens) {
         if (lens.type !== CONFIG.LENS_TYPES.ASPHERIC) {
             return { noAberration: false, message: '需要使用非球面透镜' };
         }
-        
-        return { noAberration: true, message: '球差被消除，所有光线会聚到同一点' };
+
+        const analysis = Physics.analyzeLens(lens);
+
+        if (analysis.focalSpread > 2) {
+            return { noAberration: false, message: `仍有约 ${Math.round(analysis.focalSpread)}px 的焦点错开` };
+        }
+
+        return {
+            noAberration: true,
+            message: `球差消除，所有光线会聚到同一焦点（约 ${Math.round(analysis.fParaxial)}px 处）`
+        };
     }
-    
+
     /**
      * 获取透镜类型中文名称
      */

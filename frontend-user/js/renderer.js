@@ -183,7 +183,7 @@ class Renderer {
                 this.drawConcaveLens(ctx, x, y, width, halfHeight, lens.curvature);
                 break;
             case CONFIG.LENS_TYPES.PLANO:
-                this.drawPlanoLens(ctx, x, y, halfHeight);
+                this.drawPlanoLens(ctx, x, y, halfHeight, lens);
                 break;
             case CONFIG.LENS_TYPES.ASPHERIC:
                 this.drawAsphericLens(ctx, x, y, width, halfHeight, lens.curvature);
@@ -212,8 +212,9 @@ class Renderer {
         ctx.closePath();
     }
     
-    drawPlanoLens(ctx, x, y, halfHeight) {
-        ctx.rect(x - 4, y - halfHeight, 8, halfHeight * 2);
+    drawPlanoLens(ctx, x, y, halfHeight, lens) {
+        const t = lens ? lens.getThickness() : 14;
+        ctx.rect(x - t / 2, y - halfHeight, t, halfHeight * 2);
     }
     
     drawAsphericLens(ctx, x, y, width, halfHeight, curvature) {
@@ -225,126 +226,37 @@ class Renderer {
     
     drawLightRays() {
         let rays;
-        
+
         if (this.lightMode === CONFIG.LIGHT_MODES.PARALLEL) {
-            rays = Physics.generateParallelRays(this.height, this.rayCount, this.incidentAngle);
+            rays = Physics.generateParallelRays(
+                this.height, this.rayCount, this.incidentAngle, this.lenses
+            );
         } else {
             rays = Physics.generatePointSourceRays(50, this.height / 2, this.rayCount);
         }
-        
-        // 检查是否有透镜需要显示色散效果
-        // 普通玻璃色散明显，低色散镜片色散小
-        const hasDispersiveLens = this.lenses.some(l => l.dispersion > 0.05);
-        
-        if (this.showDispersion && hasDispersiveLens) {
-            // 色散模式：分别绘制红、绿、蓝三色光
-            // 绘制顺序：先红后蓝，这样蓝光在上层更明显
+
+        // 色散模式：分别绘制红、绿、蓝三色光（蓝在上层最明显）
+        // 单色模式：入射段红色、折射后蓝色
+        if (this.showDispersion) {
             ['red', 'green', 'blue'].forEach(color => {
-                rays.forEach(ray => this.traceRayWithDispersion(ray, color));
+                rays.forEach(ray => this.traceRay(ray, color));
             });
         } else {
-            rays.forEach(ray => this.traceRay(ray));
+            rays.forEach(ray => this.traceRay(ray, null));
         }
     }
-    
+
     /**
-     * 追踪并绘制单条光线（带色散效果）
-     * 
-     * 色散原理：
-     * - 蓝光折射率最大，偏折最多
-     * - 红光折射率最小，偏折最少
-     * - 低色散镜片：三色光几乎重合
-     * - 普通玻璃：三色光明显分离
-     */
-    traceRayWithDispersion(ray, color) {
-        const ctx = this.ctx;
-        let rayX = ray.x;
-        let rayY = ray.y;
-        let rayAngle = ray.angle;
-        let lastLensId = null;
-        
-        // 设置颜色
-        ctx.strokeStyle = CONFIG.COLORS[`RAY_${color.toUpperCase()}`];
-        ctx.lineWidth = CONFIG.RENDER.RAY_WIDTH;
-        
-        ctx.beginPath();
-        ctx.moveTo(rayX, rayY);
-        
-        // 追踪光线穿过多个透镜
-        for (let i = 0; i < 20; i++) {
-            let nearest = null;
-            let nearestLens = null;
-            let minDist = Infinity;
-            
-            for (const lens of this.lenses) {
-                if (lens.id === lastLensId) continue;
-                
-                const hit = Physics.calculateRayLensIntersection(rayX, rayY, rayAngle, lens);
-                if (hit && hit.distance < minDist) {
-                    minDist = hit.distance;
-                    nearest = hit;
-                    nearestLens = lens;
-                }
-            }
-            
-            if (!nearest) break;
-            
-            ctx.lineTo(nearest.x, nearest.y);
-            ctx.stroke();
-            
-            // 计算该颜色光的折射率
-            const colorIndex = Physics.calculateDispersionIndex(
-                nearestLens.refractiveIndex,
-                nearestLens.dispersion,
-                color
-            );
-            
-            // 创建临时透镜对象，使用色散后的折射率
-            const tempLens = {
-                ...nearestLens,
-                refractiveIndex: colorIndex,
-                y: nearestLens.y,
-                getHeight: () => nearestLens.getHeight(),
-                type: nearestLens.type,
-                curvature: nearestLens.curvature
-            };
-            
-            const newAngle = Physics.calculateRefractedAngle(rayAngle, nearest.y, tempLens);
-            
-            rayX = nearest.x;
-            rayY = nearest.y;
-            rayAngle = newAngle;
-            lastLensId = nearestLens.id;
-            
-            ctx.beginPath();
-            ctx.moveTo(rayX, rayY);
-        }
-        
-        // 画到画布边缘
-        const dirX = Math.cos(rayAngle);
-        const dirY = Math.sin(rayAngle);
-        let endX, endY;
-        
-        if (Math.abs(dirX) > 0.001) {
-            endX = dirX > 0 ? this.width + 50 : -50;
-            endY = rayY + dirY * (endX - rayX) / dirX;
-        } else {
-            endX = rayX;
-            endY = dirY > 0 ? this.height + 50 : -50;
-        }
-        
-        ctx.lineTo(endX, endY);
-        ctx.stroke();
-    }
-    
-    /**
-     * 追踪并绘制单条光线 - 支持多透镜
-     * 
-     * 光路规律：
-     * - 凸透镜：光线向光轴会聚
-     * - 凹透镜：光线向外发散
-     * - 平面透镜：不偏折
-     * - 非球面：更精准会聚
+     * 追踪并绘制单条光线（支持多透镜，渲染与题目校验共用 Physics 规则）
+     *
+     * 光路规律（与帮助文案一致）：
+     * - 凸透镜：光线向光轴会聚，边缘光线存在球差
+     * - 凹透镜：光线向外发散（虚焦点在入射侧）
+     * - 平面透镜：方向不变，垂直入射无侧移，斜入射发生微小侧移
+     * - 非球面透镜：所有平行光线严格会聚到同一焦点
+     *
+     * @param {{x:number,y:number,angle:number}} ray 入射光线
+     * @param {'red'|'green'|'blue'|null} color 色散模式下的光色
      */
     traceRay(ray, color = null) {
         const ctx = this.ctx;
@@ -353,29 +265,28 @@ class Renderer {
         let rayAngle = ray.angle;
         let isIncident = true;
         let lastLensId = null;
-        
-        // 设置颜色
+
+        ctx.lineWidth = CONFIG.RENDER.RAY_WIDTH;
+
+        ctx.beginPath();
+        ctx.moveTo(rayX, rayY);
+
+        // 入射段上色
         if (color) {
             ctx.strokeStyle = CONFIG.COLORS[`RAY_${color.toUpperCase()}`];
         } else {
             ctx.strokeStyle = CONFIG.COLORS.INCIDENT_RAY;
         }
-        ctx.lineWidth = CONFIG.RENDER.RAY_WIDTH;
-        
-        ctx.beginPath();
-        ctx.moveTo(rayX, rayY);
-        
+
         // 追踪光线穿过多个透镜
         for (let i = 0; i < 20; i++) {
             let nearest = null;
             let nearestLens = null;
             let minDist = Infinity;
-            
-            // 找最近的透镜（按距离排序）
+
             for (const lens of this.lenses) {
-                // 跳过刚穿过的透镜
                 if (lens.id === lastLensId) continue;
-                
+
                 const hit = Physics.calculateRayLensIntersection(rayX, rayY, rayAngle, lens);
                 if (hit && hit.distance < minDist) {
                     minDist = hit.distance;
@@ -383,39 +294,44 @@ class Renderer {
                     nearestLens = lens;
                 }
             }
-            
-            // 没有更多透镜了
+
             if (!nearest) break;
-            
-            // 画到交点
+
+            // 画到入射面
             ctx.lineTo(nearest.x, nearest.y);
             ctx.stroke();
-            
-            // 使用新的物理API计算折射角度
-            // 新API: Physics.calculateRefractedAngle(rayAngle, rayY, lens)
-            const newAngle = Physics.calculateRefractedAngle(rayAngle, nearest.y, nearestLens);
-            
-            // 更新光线状态
-            rayX = nearest.x;
-            rayY = nearest.y;
-            rayAngle = newAngle;
+
+            // 统一物理规则：薄透镜一次偏折 / 平面透镜两次折射
+            const result = Physics.traceThroughLens(nearest, rayAngle, nearestLens, color);
+
+            // 平面透镜：补画板内折线段
+            for (const p of result.points) {
+                ctx.beginPath();
+                ctx.moveTo(nearest.x, nearest.y);
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+            }
+
+            rayX = result.exit.x;
+            rayY = result.exit.y;
+            rayAngle = result.exitAngle;
             lastLensId = nearestLens.id;
-            
-            // 折射后换颜色
+
+            // 折射后换颜色（单色模式入射红、出射蓝；色散模式全程光本色）
             if (!color && isIncident) {
                 ctx.strokeStyle = CONFIG.COLORS.REFRACTED_RAY;
                 isIncident = false;
             }
-            
+
             ctx.beginPath();
             ctx.moveTo(rayX, rayY);
         }
-        
+
         // 画到画布边缘
         const dirX = Math.cos(rayAngle);
         const dirY = Math.sin(rayAngle);
         let endX, endY;
-        
+
         if (Math.abs(dirX) > 0.001) {
             endX = dirX > 0 ? this.width + 50 : -50;
             endY = rayY + dirY * (endX - rayX) / dirX;
@@ -423,39 +339,87 @@ class Renderer {
             endX = rayX;
             endY = dirY > 0 ? this.height + 50 : -50;
         }
-        
+
         ctx.lineTo(endX, endY);
         ctx.stroke();
     }
     
     drawLabels() {
         const ctx = this.ctx;
-        
+
         this.lenses.forEach(lens => {
-            if (lens.type === CONFIG.LENS_TYPES.PLANO) return;
-            
-            const focalLength = lens.getFocalLength();
-            if (!isFinite(focalLength)) return;
-            
-            const focalX = lens.x + focalLength;
-            const focalY = lens.y;
-            
-            if (focalX > 0 && focalX < this.width) {
-                ctx.fillStyle = CONFIG.COLORS.FOCAL_POINT;
-                ctx.beginPath();
-                ctx.arc(focalX, focalY, CONFIG.RENDER.FOCAL_POINT_RADIUS, 0, Math.PI * 2);
-                ctx.fill();
-                
+            if (lens.type === CONFIG.LENS_TYPES.PLANO) return; // 平面透镜无焦点
+
+            if (this.showDispersion) {
+                // 色散模式：红、绿、蓝三色焦点分别画在光轴上（蓝近红远）
+                const labelRows = { red: -14, green: -28, blue: -42 };
+                ['red', 'green', 'blue'].forEach(color => {
+                    const f = lens.getFocalLength(color);
+                    if (!isFinite(f)) return;
+                    const focalX = lens.x + f; // 凹透镜 f 为负，落在入射侧
+                    if (focalX <= 0 || focalX >= this.width) return;
+
+                    this.drawFocalMarker(
+                        focalX, lens.y, CONFIG.COLORS[`RAY_${color.toUpperCase()}`],
+                        lens.type === CONFIG.LENS_TYPES.CONCAVE
+                    );
+                    ctx.fillStyle = CONFIG.COLORS[`RAY_${color.toUpperCase()}`];
+                    ctx.font = '10px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`${Math.round(Math.abs(f))}`, focalX, lens.y + labelRows[color]);
+                });
+            } else {
+                // 单色模式：焦点位置即绿光（d 线）近轴焦点
+                const f = lens.getFocalLength();
+                if (!isFinite(f)) return;
+                const focalX = lens.x + f;
+                if (focalX <= 0 || focalX >= this.width) return;
+
+                const isVirtual = lens.type === CONFIG.LENS_TYPES.CONCAVE;
+                this.drawFocalMarker(focalX, lens.y, CONFIG.COLORS.FOCAL_POINT, isVirtual);
+
+                ctx.fillStyle = isVirtual ? CONFIG.COLORS.OPTICAL_AXIS : CONFIG.COLORS.FOCAL_POINT;
                 ctx.font = '12px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText('F', focalX, focalY - 12);
+                ctx.fillText(
+                    isVirtual ? `F(虚) ${Math.round(Math.abs(f))}` : `F ${Math.round(f)}`,
+                    focalX, lens.y - 12
+                );
             }
         });
-        
+
         ctx.fillStyle = CONFIG.COLORS.OPTICAL_AXIS;
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'left';
-        ctx.fillText('光轴', 10, this.height / 2 - 8);
+        ctx.fillText('光轴（刻度单位：像素）', 10, this.height / 2 - 8);
+    }
+
+    /**
+     * 绘制焦点：实焦点实心圆，虚焦点空心圆，并在光轴上加短刻度
+     */
+    drawFocalMarker(x, y, color, isVirtual) {
+        const ctx = this.ctx;
+
+        // 光轴刻度（短竖线）
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 5);
+        ctx.lineTo(x, y + 5);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.arc(x, y, CONFIG.RENDER.FOCAL_POINT_RADIUS, 0, Math.PI * 2);
+        if (isVirtual) {
+            ctx.fillStyle = '#FAFAFA';
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = CONFIG.COLORS.OPTICAL_AXIS;
+            ctx.stroke();
+        } else {
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
     }
     
     getLensAtPoint(x, y) {

@@ -10,6 +10,9 @@ docker-compose up --build -d
 # 用户端: http://localhost:8081
 
 # 或直接用浏览器打开 frontend-user/index.html
+
+# 本地一致性自检（无需依赖，Node >= 16）
+cd frontend-user && npm test
 ```
 
 ## Services
@@ -38,13 +41,27 @@ docker-compose up --build -d
 - 首次使用引导界面
 - 跨设备响应式布局（手机、平板、电脑）
 
-### 光路规律
+### 光路规律（画布、题目、帮助同一口径）
 
-- 凸透镜：光线向光轴会聚
-- 凹透镜：光线向外发散
-- 平面透镜：不偏折
-- 非球面透镜：更精准会聚，消除球差
+- 凸透镜：光线向光轴会聚；球面透镜边缘光线偏折过度，存在可见球差
+- 凹透镜：光线向外发散，反向延长线交于入射侧的虚焦点
+- 平面透镜：出射方向与入射方向一致；垂直入射无侧移，斜入射有与板厚相关的微小侧移
+- 非球面透镜：补偿球差，所有平行光线严格会聚到同一焦点
+- 色散：蓝光焦距最短、红光最长；普通玻璃三色焦点明显分离，低色散镜片几乎重合
+
+### 一致性自检
+
+题目说明、帮助文案与画布物理规则共用 `js/physics.js` 与 `js/examples.js`（标准示例清单）。
+本地开发与 Docker 构建都会运行同一份检查，任一口径对不上即失败：
+
+```bash
+npm test
+# 依次执行：
+#   node tests/consistency-check.js   # 文案声称的效果物理上必须成立
+#   node tests/quiz-solvable-check.js # 每道题的标准解必须能通过
+#   node tests/smoke-check.js         # 全部脚本与示例在模拟 DOM 下无运行时错误
+```
 
 ### 技术栈
 
-HTML5 + CSS3 + JavaScript（原生无依赖）
+HTML5 + CSS3 + JavaScript（原生无依赖，Node 仅用于一致性测试）

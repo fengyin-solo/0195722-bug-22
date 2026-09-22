@@ -244,13 +244,25 @@ class App {
             hintText.classList.add('hidden');
             hintText.textContent = '';
         }
-        
+
+        // 色散题自动打开色散开关，并同步工具栏按钮状态
+        const needDispersion = question.id === 'dispersion_demo' ||
+            question.id === 'low_dispersion_lens';
+        const renderer = this.canvasManager.getRenderer();
+        if (renderer) {
+            renderer.setShowDispersion(needDispersion);
+        }
+        const btnDispersion = document.getElementById('btn-toggle-dispersion');
+        if (btnDispersion) {
+            btnDispersion.classList.toggle('active', needDispersion);
+        }
+
         // 启用提示按钮
         const btnHint = document.getElementById('btn-quiz-hint');
         if (btnHint) {
             btnHint.disabled = false;
         }
-        
+
         // 更新得分显示
         this.updateScoreDisplay();
     }
